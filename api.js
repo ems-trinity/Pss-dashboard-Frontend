@@ -20,6 +20,9 @@
   // ── Token management (Bearer fallback) ────────────────────────────────────────
   let _token = localStorage.getItem('trinity_token');
 
+  // Set by getThresholds, used by saveThresholds for versioned updates
+  let _thresholdCtx = null;
+
   function authHeaders() {
     const h = { 'Content-Type': 'application/json' };
     if (_token) h['Authorization'] = `Bearer ${_token}`;
@@ -388,14 +391,21 @@
       const data = await apiFetch(`/pss/${pssId}/thresholds`);
       // Map by_type rules to the flat global format the Config screen expects
       const byType = data.by_type ?? {};
-      const tx     = byType.TRANSFORMER?.[0]?.rules ?? {};
-      const htf    = byType.HT_Feeder?.[0]?.rules   ?? {};
+      const tx     = byType.TRANSFORMER?.[0] ?? null;
+
+      // Remember context so saveThresholds can POST versioned updates
+      _thresholdCtx = {
+        pssId,
+        transformer: tx ? { component_id: tx.component_id, rules: tx.rules ?? {} } : null,
+      };
+
+      const txRules = tx?.rules ?? {};
       return {
         global: {
-          oilTempWarn:  tx.oil_warn_c        ?? 75,
-          oilTempCrit:  tx.oil_critical_c    ?? 85,
-          windTempWarn: tx.winding_warn_c    ?? 90,
-          windTempCrit: tx.winding_critical_c ?? 100,
+          oilTempWarn:  txRules.oil_warn_c         ?? 75,
+          oilTempCrit:  txRules.oil_critical_c     ?? 85,
+          windTempWarn: txRules.winding_warn_c     ?? 90,
+          windTempCrit: txRules.winding_critical_c ?? 100,
           pfMin:        0.92,
           loadPctWarn:  85,
           loadPctCrit:  95,
@@ -476,10 +486,28 @@
 
     // Thresholds save — maps back to our API (component_thresholds versioning)
     // For now: no-op returning the same object (threshold updates need admin UI flow)
+    // POST /api/pss/:id/thresholds — versioned update (Rule 5)
     async saveThresholds(thresholds) {
-      // Threshold saves are per-unit; global changes applied to all known PSS
-      // For now: no-op with a console note (threshold API requires per-unit pssId)
-      console.info('[API] saveThresholds: threshold persistence not yet wired to a specific PSS — changes apply in-session only');
+      if (!_thresholdCtx?.transformer) {
+        console.info('[API] saveThresholds: no threshold context loaded yet — call getThresholds(pssId) first');
+        return thresholds;
+      }
+      const { pssId, transformer } = _thresholdCtx;
+      const eff = { ...thresholds.global, ...(thresholds.perUnit?.[pssId] ?? {}) };
+      const rules = {
+        ...transformer.rules,   // preserve rule keys the Config screen doesn't edit
+        oil_warn_c:         eff.oilTempWarn,
+        oil_critical_c:     eff.oilTempCrit,
+        winding_warn_c:     eff.windTempWarn,
+        winding_critical_c: eff.windTempCrit,
+      };
+      await apiFetch(`/pss/${pssId}/thresholds`, {
+        method: 'POST',
+        body: JSON.stringify({
+          updates: [{ component_id: transformer.component_id, rules, reason: 'Updated via dashboard Config' }],
+        }),
+      });
+      transformer.rules = rules;  // keep context current for the next save
       return thresholds;
     },
   };

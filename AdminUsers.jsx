@@ -5,6 +5,8 @@ const EMPTY_FORM = { name:'', email:'', role:'user', active:true, access:[] };
 
 function AdminUsers({ pss, users: initUsers }) {
   const [users,     setUsers]     = useState(initUsers);
+  // Stay in sync when App finishes loading live users after mount
+  React.useEffect(() => { setUsers(initUsers); }, [initUsers]);
   const [selected,  setSelected]  = useState(null);  // user id being edited
   const [showAdd,   setShowAdd]   = useState(false);
   const [form,      setForm]      = useState(EMPTY_FORM);
@@ -28,20 +30,35 @@ function AdminUsers({ pss, users: initUsers }) {
     setForm(EMPTY_FORM); setSelected(null); setShowAdd(true); setTempPass('');
   }
 
-  function saveUser() {
-    if (showAdd) {
-      const newId = 'U' + (Date.now()+'').slice(-4);
-      const pass  = 'Tr1n' + Math.random().toString(36).slice(-4).toUpperCase();
-      setUsers(prev => [...prev, { id:newId, ...form, login: new Date().toISOString() }]);
-      setTempPass(pass); setSaved(newId);
-    } else {
-      setUsers(prev => prev.map(u => u.id === selected ? { ...u, ...form } : u));
-      setSaved(selected); setSelected(null); setShowAdd(false);
+  const [saveError, setSaveError] = useState('');
+
+  async function saveUser() {
+    setSaveError('');
+    try {
+      if (showAdd) {
+        const { user: newUser, tempPassword } = await window.API.createUser(form);
+        setUsers(prev => [...prev, { ...newUser, access: form.access }]);
+        setTempPass(tempPassword); setSaved(newUser.id);
+      } else {
+        await window.API.updateUser(selected, form);
+        if (form.access) await window.API.updatePssAccess(selected, form.access);
+        setUsers(prev => prev.map(u => u.id === selected ? { ...u, ...form } : u));
+        setSaved(selected); setSelected(null); setShowAdd(false);
+      }
+    } catch (err) {
+      setSaveError(err.message || 'Save failed');
     }
   }
 
-  function toggleActive(id) {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !u.active } : u));
+  async function toggleActive(id) {
+    const target = users.find(u => u.id === id);
+    if (!target) return;
+    try {
+      await window.API.setUserStatus(id, !target.active);
+      setUsers(prev => prev.map(u => u.id === id ? { ...u, active: !u.active } : u));
+    } catch (err) {
+      setSaveError(err.message || 'Status change failed');
+    }
   }
 
   function toggleAccess(pssId) {
@@ -219,8 +236,14 @@ function AdminUsers({ pss, users: initUsers }) {
               </div>
             )}
 
+            {saveError && (
+              <div style={{ background:'#FEE2E2', border:'1px solid #FCA5A5', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#DC2626' }}>
+                {saveError}
+              </div>
+            )}
+
             <div style={{ display:'flex', gap:10 }}>
-              <button className="btn-ghost" onClick={() => { setSelected(null); setShowAdd(false); }} style={{ flex:1, justifyContent:'center' }}>
+              <button className="btn-ghost" onClick={() => { setSelected(null); setShowAdd(false); setSaveError(''); }} style={{ flex:1, justifyContent:'center' }}>
                 Cancel
               </button>
               <button className="btn-primary" disabled={!form.name.trim() || !form.email.trim()}

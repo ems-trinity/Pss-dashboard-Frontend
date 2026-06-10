@@ -95,16 +95,19 @@ function App() {
 
     async function loadAll() {
       try {
-        const [pssData, threshData, eventsData, usersData] = await Promise.all([
+        const [pssData, eventsData, usersData] = await Promise.all([
           window.API.getPss(),
-          window.API.getThresholds(),
           window.API.getEvents().catch(() => null),
           window.API.getUsers().catch(() => null),
         ]);
         setPss(pssData);
-        setThresholds(threshData);
         if (eventsData) setEvents(eventsData);
         if (usersData)  setUsers(usersData);
+        // Thresholds are per-unit — load from the first unit (also primes save context)
+        if (pssData[0]?.id) {
+          const threshData = await window.API.getThresholds(pssData[0].id);
+          setThresholds(threshData);
+        }
       } catch (err) {
         console.error('[API] Initial data load failed:', err);
       }

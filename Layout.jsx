@@ -111,6 +111,15 @@ function Sidebar({ page, pssId, pss, collapsed, onToggle, onNav, user }) {
               <div style={{ fontSize:12, fontWeight:600, color: BRAND.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{user.name}</div>
               <RoleBadge role={user.role}/>
             </div>
+            <button
+              title="Sign out"
+              onClick={async () => { try { await window.API?.logout(); } finally { window.location.reload(); } }}
+              style={{ background:'transparent', border:'none', cursor:'pointer', padding:6, borderRadius:6, flexShrink:0 }}
+              onMouseEnter={e => e.currentTarget.style.background='#FEE2E2'}
+              onMouseLeave={e => e.currentTarget.style.background='transparent'}
+            >
+              <Ic name="logout" size={15} color="#DC2626"/>
+            </button>
           </div>
         )}
         <button onClick={onToggle} style={{

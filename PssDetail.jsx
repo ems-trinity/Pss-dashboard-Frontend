@@ -185,6 +185,20 @@ function ShutoffModal({ pss, onClose }) {
   const [reason, setReason]    = useState('');
   const [ack, setAck]          = useState(false);
   const [submitted, setSubmit] = useState(false);
+  const [sending, setSending]  = useState(false);
+  const [error, setError]      = useState('');
+
+  async function confirmShutoff() {
+    setError(''); setSending(true);
+    try {
+      await window.API.requestShutoff(pss.id, reason.trim());
+      setSubmit(true);
+    } catch (err) {
+      setError(err.message || 'Shutoff request failed');
+    } finally {
+      setSending(false);
+    }
+  }
 
   if (submitted) return (
     <Modal title="Shutoff Requested" onClose={onClose}>
@@ -225,15 +239,21 @@ function ShutoffModal({ pss, onClose }) {
           </span>
         </label>
 
+        {error && (
+          <div style={{ background:'#FEE2E2', border:'1px solid #FCA5A5', borderRadius:8, padding:'10px 14px', fontSize:13, color:'#DC2626' }}>
+            {error}
+          </div>
+        )}
+
         <div style={{ display:'flex', gap:10 }}>
           <button className="btn-ghost" onClick={onClose} style={{ flex:1, justifyContent:'center' }}>Cancel</button>
           <button
-            className="btn-danger" disabled={!reason.trim() || !ack}
-            onClick={() => setSubmit(true)}
+            className="btn-danger" disabled={!reason.trim() || !ack || sending}
+            onClick={confirmShutoff}
             style={{ flex:1, justifyContent:'center' }}
           >
             <Ic name="zap" size={14}/>
-            Confirm Shutoff
+            {sending ? 'Submitting…' : 'Confirm Shutoff'}
           </button>
         </div>
       </div>
