@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Trinity PSS Monitoring</title>
+
+  <!-- Backend: running on localhost:3001 -->
+  <meta name="api-base" content="http://localhost:3001/api">
+  <meta name="ws-base"  content="http://localhost:3001">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.5/dist/socket.io.min.js"></script>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #F4F6FA;
+      color: #1E293B;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    .mono { font-family: 'JetBrains Mono', 'Courier New', monospace; }
+
+    /* ── Scrollbar ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+    /* ── Card ───────────────────────────────────────────────────────────── */
+    .card {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(15,23,42,0.05), 0 1px 2px rgba(15,23,42,0.03);
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #1B4DB5; color: #fff;
+      border: none; border-radius: 8px;
+      padding: 8px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s, box-shadow 0.15s;
+      font-family: inherit; white-space: nowrap;
+    }
+    .btn-primary:hover:not(:disabled) { background: #1641A0; box-shadow: 0 2px 8px rgba(27,77,181,0.25); }
+    .btn-primary:disabled { background: #94A3B8; cursor: not-allowed; }
+
+    .btn-ghost {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: transparent; color: #64748B;
+      border: 1px solid #E2E8F0; border-radius: 8px;
+      padding: 8px 14px; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all 0.15s;
+      font-family: inherit; white-space: nowrap;
+    }
+    .btn-ghost:hover:not(:disabled) { background: #F8FAFC; color: #1E293B; border-color: #CBD5E1; }
+    .btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-danger {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: #DC2626; color: #fff;
+      border: none; border-radius: 8px;
+      padding: 8px 16px; font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: background 0.15s;
+      font-family: inherit;
+    }
+    .btn-danger:hover:not(:disabled) { background: #B91C1C; }
+    .btn-danger:disabled { background: #FCA5A5; cursor: not-allowed; }
+
+    /* ── Inputs ─────────────────────────────────────────────────────────── */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    select, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #E2E8F0;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #1E293B;
+      background: #FFFFFF;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: auto;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: #1B4DB5;
+      box-shadow: 0 0 0 3px rgba(27,77,181,0.1);
+    }
+    input::placeholder, textarea::placeholder { color: #94A3B8; }
+
+    /* ── Table ──────────────────────────────────────────────────────────── */
+    table { border-collapse: collapse; width: 100%; }
+    th {
+      font-size: 10px; font-weight: 700; color: #94A3B8;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 10px 14px; text-align: left;
+      border-bottom: 1px solid #E2E8F0;
+      background: #F8FAFC; white-space: nowrap;
+      position: sticky; top: 0; z-index: 1;
+    }
+    td {
+      padding: 10px 14px; font-size: 13px;
+      border-bottom: 1px solid #F1F5F9;
+      color: #1E293B; vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #F8FAFC; }
+
+    /* ── Animations ─────────────────────────────────────────────────────── */
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1;   transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(1.35); }
+    }
+    @keyframes flowDown {
+      from { stroke-dashoffset: 20; }
+      to   { stroke-dashoffset: 0; }
+    }
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position:  200% 0; }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .pulse-live { animation: pulseDot 2s ease-in-out infinite; }
+
+    .skeleton {
+      background: linear-gradient(90deg, #E2E8F0 25%, #F1F5F9 50%, #E2E8F0 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 6px;
+    }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    [title] { cursor: default; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- API service layer (loads before React components) -->
+  <script src="api.js"></script>
+
+  <!-- Mock data (used when USE_LIVE_API = false in App.jsx) -->
+  <script src="mockData.js"></script>
+
+  <!-- Component files — loaded in dependency order -->
+  <script type="text/babel" src="UIComponents.jsx"></script>
+  <script type="text/babel" src="Layout.jsx"></script>
+  <script type="text/babel" src="Login.jsx"></script>
+  <script type="text/babel" src="Overview.jsx"></script>
+  <script type="text/babel" src="Sld.jsx"></script>
+  <script type="text/babel" src="PssDetail.jsx"></script>
+  <script type="text/babel" src="Graphs.jsx"></script>
+  <script type="text/babel" src="Events.jsx"></script>
+  <script type="text/babel" src="AdminUsers.jsx"></script>
+  <script type="text/babel" src="Notifications.jsx"></script>
+  <script type="text/babel" src="Config.jsx"></script>
+  <script type="text/babel" src="App.jsx"></script>
+</body>
+</html>
