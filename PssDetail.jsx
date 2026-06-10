@@ -242,13 +242,31 @@ function ShutoffModal({ pss, onClose }) {
 }
 
 // ── PSS Detail page ────────────────────────────────────────────────────────
-function PssDetail({ pssId, pss, detail, onNav, userRole }) {
-  const [selComp, setSelComp]       = useState(null);
+function PssDetail({ pssId, pss, detail: detailProp, onNav, userRole }) {
+  const [selComp,    setSelComp]    = useState(null);
   const [showShutoff, setShutoff]   = useState(false);
+  const [liveDetail, setLiveDetail] = useState(null);
 
-  const unit   = pss.find(p => p.id === pssId);
-  const d      = detail[pssId];
-  const apfc   = d?.components.find(c => c.type === 'APFC');
+  const unit = pss.find(p => p.id === pssId);
+
+  // Fetch live detail from API; refresh every 10s
+  React.useEffect(() => {
+    if (!pssId || typeof window.API === 'undefined') return;
+    let cancelled = false;
+
+    function fetchDetail() {
+      window.API.getPssDetail(pssId)
+        .then(data => { if (!cancelled) setLiveDetail(data); })
+        .catch(err => console.error('[PssDetail] fetch failed:', err));
+    }
+
+    fetchDetail();
+    const t = setInterval(fetchDetail, 10_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [pssId]);
+
+  const d    = liveDetail ?? detailProp?.[pssId];
+  const apfc = d?.components?.find(c => c.type === 'APFC');
 
   if (!unit) return (
     <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>

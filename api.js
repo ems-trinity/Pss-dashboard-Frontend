@@ -476,6 +476,9 @@
     // Thresholds save — maps back to our API (component_thresholds versioning)
     // For now: no-op returning the same object (threshold updates need admin UI flow)
     async saveThresholds(thresholds) {
+      // Threshold saves are per-unit; global changes applied to all known PSS
+      // For now: no-op with a console note (threshold API requires per-unit pssId)
+      console.info('[API] saveThresholds: threshold persistence not yet wired to a specific PSS — changes apply in-session only');
       return thresholds;
     },
   };
