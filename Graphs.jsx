@@ -9,12 +9,26 @@ const TIME_RANGES = [
   { label:'30D', hours:720  },
 ];
 
-function Graphs({ pssId, pss, telemetry }) {
-  const [tab, setTab]     = useState('ht');
-  const [range, setRange] = useState('24H');
+function Graphs({ pssId, pss, telemetry: telemetryProp }) {
+  const [tab,       setTab]       = useState('ht');
+  const [range,     setRange]     = useState('24H');
+  const [telemetry, setTelemetry] = useState(telemetryProp);
+  const [loading,   setLoading]   = useState(false);
 
   const unit = pss.find(p => p.id === pssId);
-  const tel  = telemetry?.[pssId];
+
+  // Fetch real telemetry when pssId or range changes (live mode only)
+  React.useEffect(() => {
+    if (!pssId || typeof window.API === 'undefined') return;
+    const hrs = TIME_RANGES.find(r => r.label === range)?.hours || 24;
+    setLoading(true);
+    window.API.getTelemetry(pssId, hrs)
+      .then(data => setTelemetry(prev => ({ ...prev, [pssId]: data })))
+      .catch(err => console.error('[Graphs] telemetry fetch failed:', err))
+      .finally(() => setLoading(false));
+  }, [pssId, range]);
+
+  const tel = telemetry?.[pssId];
 
   // Filter series by time range
   const hrs = TIME_RANGES.find(r => r.label === range)?.hours || 24;

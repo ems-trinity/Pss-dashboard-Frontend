@@ -201,6 +201,7 @@
       msg:     e.summary,
       fStatus: e.fault_status ?? null,
       pssId:   e.pss_id,
+      pssCode: e.pss_code ?? null,
       detail:  e.details ?? {},
     }));
   }
@@ -304,9 +305,9 @@
         const rows = await apiFetch(`/pss/${pssId}/events?limit=${limit}`);
         return transformEvents(rows);
       }
-      // No pssId: fetch all PSS list first, then merge events from each
-      // (used by the global events view — falls back gracefully)
-      return [];
+      // Global event log — uses /api/events (admin/service see all)
+      const rows = await apiFetch(`/events?limit=${limit}`);
+      return transformEvents(rows);
     },
 
     // GET /api/pss/:id/telemetry (4 group calls, merged into flat series object)

@@ -19,11 +19,11 @@ function App() {
   const [wsStatus,  setWsStatus]  = useState('live');
 
   // Core data — seeded from mock; replaced by API on login when USE_LIVE_API = true
-  const [pss,      setPss]      = useState(md.pss);
-  const [detail]                = useState(md.detail);   // TODO: fetch per-unit on demand
-  const [events]                = useState(md.events);   // TODO: make stateful for live events
-  const [users]                 = useState(md.users);
-  const [telemetry]             = useState(md.telemetry);
+  const [pss,         setPss]         = useState(md.pss);
+  const [detail]                      = useState(md.detail);
+  const [events,      setEvents]      = useState(md.events);
+  const [users,       setUsers]       = useState(md.users);
+  const [telemetry,   setTelemetry]   = useState(md.telemetry);
   const [currentUser, setCurrentUser] = useState(md.user);
 
   // ── Thresholds ─────────────────────────────────────────────────────────────
@@ -93,19 +93,39 @@ function App() {
   useEffect(() => {
     if (!loggedIn || !USE_LIVE_API) return;
 
-    (async () => {
+    async function loadAll() {
       try {
-        const [pssData, threshData] = await Promise.all([
+        const [pssData, threshData, eventsData, usersData] = await Promise.all([
           window.API.getPss(),
           window.API.getThresholds(),
+          window.API.getEvents().catch(() => null),
+          window.API.getUsers().catch(() => null),
         ]);
         setPss(pssData);
         setThresholds(threshData);
-        // TODO: also fetch events and users when you have those endpoints ready
+        if (eventsData) setEvents(eventsData);
+        if (usersData)  setUsers(usersData);
       } catch (err) {
         console.error('[API] Initial data load failed:', err);
       }
-    })();
+    }
+
+    loadAll();
+    // 30s auto-refresh for PSS list and events
+    const poll = setInterval(async () => {
+      try {
+        const [pssData, eventsData] = await Promise.all([
+          window.API.getPss(),
+          window.API.getEvents().catch(() => null),
+        ]);
+        setPss(pssData);
+        if (eventsData) setEvents(eventsData);
+      } catch (err) {
+        console.error('[API] Poll failed:', err);
+      }
+    }, 30_000);
+
+    return () => clearInterval(poll);
   }, [loggedIn]);
 
   // ── WebSocket — live mode ──────────────────────────────────────────────────
