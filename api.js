@@ -182,6 +182,7 @@
       faults: (data.active_faults ?? []).map(f => ({
         id:      f.id,
         ts:      f.ts,
+        at:      f.ts,            // ActiveFaults panel reads f.at
         sev:     f.severity,
         comp:    f.component_name || f.component_type,
         type:    f.fault_type,

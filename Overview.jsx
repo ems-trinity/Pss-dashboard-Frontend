@@ -118,6 +118,17 @@ function Overview({ pss, onNav }) {
     Object.fromEntries(pss.map(u => [u.id, seedHist(u)]))
   );
 
+  // Seed history for units that appeared after mount (live API ids differ from mock ids)
+  useEffect(() => {
+    setHist(prev => {
+      const missing = pss.filter(u => !prev[u.id] || (u.status !== 'offline' && prev[u.id].kw.length === 0));
+      if (missing.length === 0) return prev;
+      const next = { ...prev };
+      missing.forEach(u => { next[u.id] = seedHist(u); });
+      return next;
+    });
+  }, [pss]);
+
   useEffect(() => {
     const t = setInterval(() => {
       setHist(prev => {
