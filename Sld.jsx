@@ -157,19 +157,19 @@ function Sld({ detail, selectedComp, onSelectComp }) {
           <TX x={CX-HW/2+14} y={HY+30} size={9} weight={600} color={BRAND.textMut} anchor="start">Voltage</TX>
           <TX x={CX+HW/2-14} y={HY+30} size={9} weight={600} color={BRAND.textMut} anchor="end">Current</TX>
           <TX x={CX-HW/2+14} y={HY+43} size={12} weight={700} mono color={BRAND.text} anchor="start">
-            {htf ? `${(htf.v/1000).toFixed(1)} kV` : '—'}
+            {htf ? `${htf.v != null ? (htf.v/1000).toFixed(1) : '—'} kV` : '—'}
           </TX>
           <TX x={CX+HW/2-14} y={HY+43} size={12} weight={700} mono color={BRAND.text} anchor="end">
-            {htf ? `${htf.a.toFixed(1)} A` : '—'}
+            {htf ? `${htf.a != null ? htf.a.toFixed(1) : '—'} A` : '—'}
           </TX>
 
           <line x1={CX-HW/2+10} y1={HY+51} x2={CX+HW/2-10} y2={HY+51} stroke={BRAND.border} strokeWidth={1}/>
 
           <TX x={CX} y={HY+64} size={13} weight={700} mono color={BRAND.blue}>
-            {htf ? `${htf.kw.toLocaleString('en-IN')} kW` : '—'}
+            {htf ? `${(htf.kw ?? 0).toLocaleString('en-IN')} kW` : '—'}
           </TX>
           <TX x={CX} y={HY+79} size={9} mono color={BRAND.textSec}>
-            {htf ? `PF ${htf.pf.toFixed(2)}  ·  ${htf.hz} Hz` : ''}
+            {htf ? `PF ${htf.pf != null ? htf.pf.toFixed(2) : '—'}  ·  ${htf.hz ?? '—'} Hz` : ''}
           </TX>
         </Box>
 
@@ -179,7 +179,7 @@ function Sld({ detail, selectedComp, onSelectComp }) {
         <Box id={trf?.id} x={CX-TW/2} y={TY} w={TW} h={TH} status={trf?.status}>
           <TX x={CX} y={TY+15} size={9} weight={600} color={BRAND.textMut}>MAIN TRANSFORMER</TX>
           <TX x={CX} y={TY+28} size={10} weight={500} color={BRAND.textSec}>
-            {trf ? `${trf && detail.pss?.kva_rating ? detail.pss.kva_rating.toLocaleString() : '2,500'} kVA  ·  11 / 0.415 kV` : ''}
+            {trf ? `${(detail.pss?.kva ?? detail.kva ?? 2500).toLocaleString()} kVA  ·  11 / 0.415 kV` : ''}
           </TX>
 
           <line x1={CX-TW/2+12} y1={TY+36} x2={CX+TW/2-12} y2={TY+36} stroke={BRAND.border} strokeWidth={1}/>
@@ -188,12 +188,12 @@ function Sld({ detail, selectedComp, onSelectComp }) {
           <TX x={CX-TW/2+16} y={TY+52} size={9} weight={600} color={BRAND.textMut} anchor="start">Oil Temp</TX>
           <TX x={CX+TW/2-16} y={TY+52} size={9} weight={600} color={BRAND.textMut} anchor="end">Winding</TX>
           <TX x={CX-TW/2+16} y={TY+65} size={13} weight={700} mono anchor="start"
-            color={trf ? (trf.oilT>=85?STATUS.critical.color:trf.oilT>=70?STATUS.warning.color:BRAND.text) : BRAND.text}>
-            {trf ? `${trf.oilT}°C` : '—'}
+            color={trf?.oilT != null ? (trf.oilT>=85?STATUS.critical.color:trf.oilT>=70?STATUS.warning.color:BRAND.text) : BRAND.text}>
+            {trf?.oilT != null ? `${trf.oilT.toFixed(1)}°C` : '—'}
           </TX>
           <TX x={CX+TW/2-16} y={TY+65} size={13} weight={700} mono anchor="end"
-            color={trf ? (trf.windT>=120?STATUS.critical.color:trf.windT>=100?STATUS.warning.color:BRAND.text) : BRAND.text}>
-            {trf ? `${trf.windT}°C` : '—'}
+            color={trf?.windT != null ? (trf.windT>=120?STATUS.critical.color:trf.windT>=100?STATUS.warning.color:BRAND.text) : BRAND.text}>
+            {trf?.windT != null ? `${trf.windT.toFixed(1)}°C` : '—'}
           </TX>
 
           <line x1={CX-TW/2+12} y1={TY+73} x2={CX+TW/2-12} y2={TY+73} stroke={BRAND.border} strokeWidth={1}/>
@@ -221,7 +221,7 @@ function Sld({ detail, selectedComp, onSelectComp }) {
             {acb?.tripped ? '⚡ TRIPPED' : 'CLOSED'}
           </TX>
           <TX x={CX} y={AY+43} size={9} color={BRAND.textMut}>
-            {ltf ? `${ltf.v} V  ·  ${ltf.a.toLocaleString('en-IN')} A` : '415 V  ·  —'}
+            {ltf ? `${ltf.v ?? 415} V  ·  ${(ltf.a ?? 0).toLocaleString('en-IN')} A` : '415 V  ·  —'}
           </TX>
         </Box>
 
@@ -232,7 +232,7 @@ function Sld({ detail, selectedComp, onSelectComp }) {
         <TX x={busX2} y={BY-6} size={8} weight={500} mono color={
           ltf ? (ltf.pf>=0.95?'#16A34A':ltf.pf>=0.9?'#D97706':'#DC2626') : BRAND.textMut
         } anchor="end">
-          {ltf ? `PF ${ltf.pf.toFixed(2)}  ·  ${ltf.kw.toLocaleString('en-IN')} kW` : ''}
+          {ltf ? `PF ${(ltf.pf ?? 0).toFixed(2)}  ·  ${(ltf.kw ?? 0).toLocaleString('en-IN')} kW` : ''}
         </TX>
         <HBusLine x1={busX1} x2={busX2} y={BY} status={ltf?.status || 'normal'}/>
 

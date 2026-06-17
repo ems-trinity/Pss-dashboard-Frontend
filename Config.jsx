@@ -115,32 +115,37 @@ function Config({ pss, thresholds, onSave }) {
   const [draft,      setDraft]      = useState(thresholds);
   const [saveFlash,  setSaveFlash]  = useState(false);
 
+  // Sync draft when live thresholds load from API after mount
+  React.useEffect(() => {
+    if (thresholds?.global) setDraft(thresholds);
+  }, [thresholds]);
+
   const isGlobal = selected === 'global';
   const unit     = pss.find(p => p.id === selected);
 
-  // Effective values for the current scope
+  // Effective values for the current scope — always fall back to DEFAULT_THRESHOLDS
   const T = isGlobal
-    ? { ...window.DEFAULT_THRESHOLDS, ...draft.global }
-    : { ...window.DEFAULT_THRESHOLDS, ...draft.global, ...(draft.perUnit[selected] || {}) };
+    ? { ...window.DEFAULT_THRESHOLDS, ...(draft.global ?? {}) }
+    : { ...window.DEFAULT_THRESHOLDS, ...(draft.global ?? {}), ...(draft.perUnit?.[selected] ?? {}) };
 
-  const hasOverrides = !isGlobal && Object.keys(draft.perUnit[selected] || {}).length > 0;
+  const hasOverrides = !isGlobal && Object.keys(draft.perUnit?.[selected] ?? {}).length > 0;
 
   function setVal(key, val) {
     if (isGlobal) {
-      setDraft(d => ({ ...d, global: { ...d.global, [key]: val } }));
+      setDraft(d => ({ ...d, global: { ...(d.global ?? {}), [key]: val } }));
     } else {
       setDraft(d => ({
         ...d,
         perUnit: {
-          ...d.perUnit,
-          [selected]: { ...(d.perUnit[selected] || {}), [key]: val },
+          ...(d.perUnit ?? {}),
+          [selected]: { ...(d.perUnit?.[selected] ?? {}), [key]: val },
         },
       }));
     }
   }
 
   function resetUnit() {
-    setDraft(d => ({ ...d, perUnit: { ...d.perUnit, [selected]: {} } }));
+    setDraft(d => ({ ...d, perUnit: { ...(d.perUnit ?? {}), [selected]: {} } }));
   }
 
   function handleSave() {
