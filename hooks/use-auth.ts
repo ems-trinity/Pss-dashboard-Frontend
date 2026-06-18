@@ -1,8 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { getStoredToken, decodeJwtPayload, getInitials } from '@/lib/auth';
+import { getStoredToken } from '@/lib/auth';
 import type { AuthUser } from '@/types';
+
+function getStoredUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('trinity_user');
+    return raw ? (JSON.parse(raw) as AuthUser) : null;
+  } catch { return null; }
+}
 
 export function useAuth() {
   const router = useRouter();
@@ -12,15 +20,9 @@ export function useAuth() {
   useEffect(() => {
     const token = getStoredToken();
     if (!token) { router.replace('/login'); return; }
-    const payload = decodeJwtPayload(token);
-    if (!payload) { router.replace('/login'); return; }
-    setUser({
-      id:       payload.id as string,
-      name:     payload.name as string,
-      email:    payload.email as string,
-      role:     payload.role as AuthUser['role'],
-      initials: getInitials((payload.name as string) ?? 'U'),
-    });
+    const stored = getStoredUser();
+    if (!stored) { router.replace('/login'); return; }
+    setUser(stored);
     setLoading(false);
   }, [router]);
 

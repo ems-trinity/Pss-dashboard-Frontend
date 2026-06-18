@@ -242,6 +242,9 @@ export async function login(email: string, password: string): Promise<{ user: Au
   }
   const data = await res.json() as { token?: string; user: AuthUser };
   if (data.token) setAuthToken(data.token);
+  if (data.user && typeof window !== 'undefined') {
+    localStorage.setItem('trinity_user', JSON.stringify(data.user));
+  }
   return data;
 }
 
@@ -252,6 +255,7 @@ export async function logout(): Promise<void> {
     headers: authHeaders(),
   }).catch(() => {});
   setAuthToken(null);
+  if (typeof window !== 'undefined') localStorage.removeItem('trinity_user');
 }
 
 export async function getPss(): Promise<Pss[]> {
