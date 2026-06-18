@@ -25,7 +25,7 @@ function authHeaders(): Record<string, string> {
   return h;
 }
 
-async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     ...opts,
