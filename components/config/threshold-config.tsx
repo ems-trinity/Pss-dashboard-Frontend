@@ -9,6 +9,7 @@ interface Props {
   pss:        Pss[];
   thresholds: Thresholds;
   onSave:     (t: Thresholds) => Promise<void>;
+  readOnly?:  boolean;
 }
 
 const FIELDS: [keyof ThresholdValues, string, number, number, number][] = [
@@ -21,7 +22,7 @@ const FIELDS: [keyof ThresholdValues, string, number, number, number][] = [
   ['loadPctCrit',  'Load Critical (%)',       1,    50,  100],
 ];
 
-export function ThresholdConfig({ pss, thresholds, onSave }: Props) {
+export function ThresholdConfig({ pss, thresholds, onSave, readOnly = false }: Props) {
   const [draft,    setDraft]    = useState<Thresholds>(thresholds);
   const [selected, setSelected] = useState<string>('global');
   const [saving,   setSaving]   = useState(false);
@@ -108,19 +109,25 @@ export function ThresholdConfig({ pss, thresholds, onSave }: Props) {
                   min={min}
                   max={max}
                   value={T[key]}
-                  onChange={e => setVal(key, parseFloat(e.target.value))}
+                  onChange={e => !readOnly && setVal(key, parseFloat(e.target.value))}
+                  readOnly={readOnly}
+                  className={readOnly ? 'bg-gray-50 cursor-default' : ''}
                 />
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-3 pt-2">
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving…' : 'Save thresholds'}
-            </Button>
-            {flash && (
-              <span className="text-sm text-green-600 font-medium">Saved ✓</span>
-            )}
-          </div>
+          {readOnly ? (
+            <p className="text-xs text-[#9CA3AF] pt-2">
+              Read-only — only Super Admin can modify thresholds.
+            </p>
+          ) : (
+            <div className="flex items-center gap-3 pt-2">
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save thresholds'}
+              </Button>
+              {flash && <span className="text-sm text-green-600 font-medium">Saved ✓</span>}
+            </div>
+          )}
         </div>
       </div>
     </div>

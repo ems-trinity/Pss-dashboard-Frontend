@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BarChart2, FileText, Users, Building2,
   FolderOpen, Zap, UserCheck, Shield, Network, Ticket,
-  ClipboardList, Settings, ChevronLeft,
+  ClipboardList, Settings, ChevronLeft, Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { AuthUser } from '@/types';
@@ -15,11 +15,12 @@ const NAV = [
   { href: '/reports',       label: 'Reports',       icon: FileText },
   { href: '/customers',     label: 'Customers',     icon: Users },
   { href: '/organisations', label: 'Organisations', icon: Building2 },
-  { href: '/projects',      label: 'Projects',      icon: FolderOpen },
-  { href: '/pss',           label: 'PSS',           icon: Zap },
+  { href: '/projects',      label: 'Locations',      icon: FolderOpen },
+  { href: '/pss',           label: 'Sub Stations',  icon: Zap },
   { href: '/team',          label: 'My Team',       icon: UserCheck },
   { href: '/groups',        label: 'Groups',        icon: Shield },
   { href: '/users',         label: 'Users',         icon: Network },
+  { href: '/event-logs',    label: 'Event Logs',    icon: Bell },
   { href: '/tickets',       label: 'Tickets',       icon: Ticket },
   { href: '/audit-log',     label: 'Audit Log',     icon: ClipboardList },
   { href: '/settings',      label: 'Settings',      icon: Settings },

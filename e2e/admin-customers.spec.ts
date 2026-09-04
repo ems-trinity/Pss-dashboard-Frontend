@@ -17,9 +17,9 @@ test.describe('Customers CRUD', () => {
   test('creates a customer and shows temp password', async ({ page }) => {
     const email = `e2e-${Date.now()}@test.com`;
     await page.getByRole('button', { name: /add/i }).click();
-    await page.getByLabel(/full name/i).fill('E2E Customer');
-    await page.getByLabel(/email/i).fill(email);
-    await page.getByLabel(/mobile/i).fill('+91 9999999999');
+    await page.getByPlaceholder('Jane Smith').fill('E2E Customer');
+    await page.getByPlaceholder('jane@company.com').fill(email);
+    await page.getByPlaceholder('+91 9876543210').fill('+91 9999999999');
     await page.getByRole('button', { name: /^save$/i }).click();
     await expect(page.getByText('Customer created. Share this temporary password:')).toBeVisible({ timeout: 5_000 });
     await page.getByRole('button', { name: /done/i }).click();

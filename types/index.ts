@@ -85,6 +85,7 @@ export interface TelemetrySeries {
 
 export interface AuthUser {
   id:       string;
+  orgId:    string;
   name:     string;
   email:    string;
   role:     User['role'];

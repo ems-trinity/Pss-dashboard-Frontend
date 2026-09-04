@@ -1,457 +1,402 @@
 'use client';
-
 import { BRAND, STATUS } from '@/lib/brand';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export interface SldComponent {
-  type:       string;
-  id:         string;
-  label:      string;
-  status:     string;
-  tripped?:   boolean;
-  spring?:    boolean;
-  relay?:     boolean;
-  v?:         number;
-  a?:         number;
-  hz?:        number;
-  pf?:        number;
-  kw?:        number;
-  kvar?:      number;
-  kwh?:       number;
-  oilT?:      number;
-  windT?:     number;
-  mog?:       boolean;
-  buch?:      boolean;
-  prv?:       boolean;
-  oltc?:      number;
-  reqKvar?:   number;
-  connKvar?:  number;
-  targetPf?:  number;
-  corrPf?:    number;
+  type: string; id: string; label: string; status: string;
+  tripped?: boolean; spring?: boolean; relay?: boolean;
+  v?: number; a?: number; hz?: number; pf?: number; kw?: number;
+  kvar?: number; kwh?: number; oilT?: number; windT?: number;
+  mog?: boolean; buch?: boolean; prv?: boolean; oltc?: number;
+  reqKvar?: number; connKvar?: number; targetPf?: number; corrPf?: number;
   feeder_id?: string;
 }
 
-export interface SldDetail {
-  status:     string;
-  kva?:       number;
-  seen?:      string | null;
-  pss?:       { kva?: number };
-  components: SldComponent[];
-  faults:     unknown[];
+export interface SldConfig {
+  has_acb2?:     boolean;   // alternate / DG source + ACB-2
+  has_apfc?:     boolean;   // APFC panel
+  has_oltc?:     boolean;   // OLTC on transformer
+  has_buchholz?: boolean;   // Buchholz relay in transformer
+  has_mfm2b?:    boolean;   // secondary bus metering (MFM-2B)
+  feeder_count?: number;    // max feeders to show (null = all from DB)
 }
 
+export interface SldDetail {
+  status: string; kva?: number; seen?: string | null;
+  pss?: { kva?: number }; components: SldComponent[]; faults: unknown[];
+  sld_config?: SldConfig;
+}
 interface SldProps {
-  detail:       SldDetail | null;
-  selectedComp: string | null;
+  detail: SldDetail | null; selectedComp: string | null;
   onSelectComp: (id: string | null) => void;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const G  = '#10B981';
+const GR = '#6B7280';
+const OF = '#94A3B8';
+const fmt = (v: number | undefined, d = 1, u = '') => v != null ? `${v.toFixed(d)}${u}` : '—';
 
-function timeAgo(iso: string | undefined): string {
-  if (!iso) return '—';
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 5000)     return 'Just now';
-  if (diff < 60000)    return `${Math.floor(diff / 1000)}s ago`;
-  if (diff < 3600000)  return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return `${Math.floor(diff / 86400000)}d ago`;
+function pillColor(c: SldComponent | undefined, offline: boolean, def = G) {
+  if (offline) return OF;
+  if (!c) return def;
+  if (c.tripped || c.status === 'critical') return STATUS.critical.color;
+  if (c.status === 'warning') return STATUS.warning.color;
+  return def;
 }
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export function Sld({ detail, selectedComp, onSelectComp }: SldProps) {
   if (!detail) return null;
-
   const { status, components } = detail;
-  const isOffline = status === 'offline';
+  const offline = status === 'offline';
 
-  const getComp  = (type: string) => components.find(c => c.type === type);
-  const getComps = (type: string) => components.filter(c => c.type === type);
+  const get  = (t: string) => components.find(c => c.type === t);
+  const gets = (t: string) => components.filter(c => c.type === t);
+  const vcb  = get('HT_VCB');
+  const htf  = get('HT_Feeder');
+  const trf  = get('TRANSFORMER');
+  const acb  = get('LT_ACB');
+  const ltf  = get('LT_FEEDER');
+  const apfc = get('APFC');
 
-  const vcb  = getComp('HT_VCB');
-  const htf  = getComp('HT_Feeder');
-  const trf  = getComp('TRANSFORMER');
-  const acb  = getComp('LT_ACB');
-  const ltf  = getComp('LT_FEEDER');
-  const outs = getComps('LT_outgoing');
-  const apfc = getComp('APFC');
+  // Merge sld_config with defaults; auto-enable has_apfc when telemetry data present
+  const cfg: Required<SldConfig> = {
+    has_acb2:     false,
+    has_apfc:     !!apfc,
+    has_oltc:     false,
+    has_buchholz: false,
+    has_mfm2b:    false,
+    feeder_count: 4,
+    ...(detail.sld_config ?? {}),
+  };
 
-  const sColor = (s: string) => (STATUS[s as keyof typeof STATUS] ?? STATUS.offline).color;
+  // Limit feeders to cfg.feeder_count (user access masking handled by backend)
+  const outs = gets('LT_outgoing').slice(0, cfg.feeder_count);
+  const nF   = cfg.feeder_count;      // show N columns regardless of data
 
-  // ── Box component ──────────────────────────────────────────────────────────
-  function Box({
-    id,
-    x,
-    y,
-    w,
-    h,
-    status: boxStatus = 'normal',
-    children,
-  }: {
-    id?: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    status?: string;
-    children: React.ReactNode;
-  }) {
-    const sel = selectedComp === id;
-    const sc  = isOffline ? STATUS.offline.color : sColor(boxStatus);
-    const sw  = boxStatus === 'critical' ? 2.5 : boxStatus === 'warning' ? 2 : 1.5;
-    return (
-      <g
-        onClick={() => !isOffline && id && onSelectComp(sel ? null : id)}
-        style={{ cursor: isOffline ? 'default' : 'pointer' }}
-      >
-        <rect
-          x={x} y={y} width={w} height={h} rx={8} ry={8}
-          fill={sel ? '#EFF6FF' : '#FFFFFF'}
-          stroke={sel ? BRAND.blue : sc}
-          strokeWidth={sel ? 2.5 : sw}
-          filter="url(#cardShadow)"
-        />
-        {boxStatus === 'critical' && !isOffline && (
-          <rect
-            x={x} y={y} width={w} height={h} rx={8} ry={8}
-            fill="none" stroke={sc} strokeWidth={1} opacity={0.3}
-            style={{ animation: 'pulseDot 1.2s ease-in-out infinite' }}
-          />
-        )}
-        {children}
-      </g>
-    );
-  }
+  // ── Layout ───────────────────────────────────────────────────────────────
+  const CX = 400, W = 760;
+  const HP    = { x: 252, y: 18, w: 296, h: 188 };
+  const VCB_Y = 66, RELAY_Y = 136;
+  const MFM1_Y = 218;
+  const TRF   = { x: 262, y: 236, w: 276, h: cfg.has_buchholz ? 176 : 164 };
 
-  // ── FlowLine ───────────────────────────────────────────────────────────────
-  function FlowLine({
-    x1, y1, x2, y2, status: lineStatus = 'normal',
-  }: {
-    x1: number; y1: number; x2: number; y2: number; status?: string;
-  }) {
-    const alive = !isOffline && lineStatus !== 'offline';
-    const clr   = isOffline ? STATUS.offline.color : sColor(lineStatus);
-    const d     = `M${x1} ${y1} L${x2} ${y2}`;
+  // LT Panel height adjusts: shrinks when no ACB2 / no MFM2B
+  const LT_TOP = TRF.y + TRF.h + 12;
+  const ACB_Y  = LT_TOP + 42;
+  const ACB2X  = 222;
+  const MFM2_Y = ACB_Y + 56;
+  const CO_Y   = MFM2_Y + 64;
+  const APFC_Y = CO_Y + 46;
+  const BUS_Y  = cfg.has_apfc ? APFC_Y + 46 : CO_Y + 46;
+
+  const FW = 108, FGAP = 14;
+  const FX0    = CX - (nF * FW + (nF - 1) * FGAP) / 2;
+  const fcx    = (i: number) => FX0 + i * (FW + FGAP) + FW / 2;
+  const ffx    = (i: number) => FX0 + i * (FW + FGAP);
+  const busX1  = FX0 - 18, busX2 = FX0 + nF * FW + (nF - 1) * FGAP + 18;
+
+  const FMFM_Y  = BUS_Y + 30;
+  const FMCCB_Y = FMFM_Y + 62;
+
+  const LT = { x: 86, y: LT_TOP, w: Math.max(622, busX2 - 86 + 20), h: FMCCB_Y + 17 + 28 - LT_TOP };
+  const H   = FMCCB_Y + 17 + 42;
+
+  // ── Render helpers ────────────────────────────────────────────────────────
+  function Line({ d, live = true }: { d: string; live?: boolean }) {
     return (
       <g>
-        <path d={d} stroke="#E2E8F0" strokeWidth={2} fill="none" />
-        {alive && (
-          <path
-            d={d} stroke={clr} strokeWidth={2} fill="none"
-            strokeDasharray="6 4"
-            style={{ animation: 'flowDown 0.7s linear infinite' }}
-            opacity={0.8}
-          />
+        <path d={d} stroke="#CBD5E1" strokeWidth={2} fill="none" strokeLinejoin="round"/>
+        {live && !offline && (
+          <path d={d} stroke={G} strokeWidth={2} fill="none" strokeDasharray="6 5"
+            strokeLinejoin="round" opacity={0.72}
+            style={{ animation: 'sldFlow .85s linear infinite' }}/>
         )}
       </g>
     );
   }
 
-  // ── HBusLine ──────────────────────────────────────────────────────────────
-  function HBusLine({
-    x1, x2, y, status: busStatus = 'normal',
-  }: {
-    x1: number; x2: number; y: number; status?: string;
+  function Dot({ x, y, c = G }: { x: number; y: number; c?: string }) {
+    return <circle cx={x} cy={y} r={4} fill={offline ? OF : c}/>;
+  }
+
+  function Pill({ cx, cy, w = 160, h = 34, lbl, clr, id }: {
+    cx: number; cy: number; w?: number; h?: number;
+    lbl: string; clr: string; id?: string;
   }) {
-    const clr = isOffline ? STATUS.offline.color : sColor(busStatus);
+    const sel   = !!id && selectedComp === id;
+    const comp  = id ? components.find(c => c.id === id) : undefined;
+    const click = comp && !offline ? () => onSelectComp(sel ? null : id!) : undefined;
     return (
-      <g>
-        <line x1={x1} y1={y} x2={x2} y2={y} stroke="#E2E8F0" strokeWidth={10} strokeLinecap="round" />
-        <line x1={x1} y1={y} x2={x2} y2={y} stroke={clr}    strokeWidth={6}  strokeLinecap="round" opacity={isOffline ? 0.5 : 0.85} />
+      <g onClick={click} style={{ cursor: click ? 'pointer' : 'default' }}>
+        <rect x={cx - w / 2} y={cy - h / 2} width={w} height={h} rx={6}
+          fill={clr} stroke={sel ? '#1D4ED8' : 'rgba(0,0,0,0.1)'} strokeWidth={sel ? 2.5 : 1}/>
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle"
+          style={{ fontSize: 12, fontWeight: 700, fill: 'white', fontFamily: 'Inter,sans-serif', letterSpacing: .3 }}>
+          {lbl}
+        </text>
       </g>
     );
   }
 
-  // ── Text helper ───────────────────────────────────────────────────────────
-  function TX({
-    x, y, children,
-    size   = 10,
-    weight = 400,
-    color  = '#64748B',
-    anchor = 'middle' as 'middle' | 'start' | 'end',
-    mono   = false,
-  }: {
-    x: number;
-    y: number;
-    children: React.ReactNode;
-    size?:   number;
-    weight?: number;
-    color?:  string;
-    anchor?: 'middle' | 'start' | 'end';
-    mono?:   boolean;
-  }) {
+  function Sub({ x, y, children }: { x: number; y: number; children: React.ReactNode }) {
     return (
-      <text
-        x={x} y={y} textAnchor={anchor}
-        style={{
-          fontSize: size,
-          fontWeight: weight,
-          fill: color,
-          fontFamily: mono ? 'JetBrains Mono,monospace' : 'Inter,sans-serif',
-        }}
-      >
+      <text x={x} y={y} textAnchor="middle"
+        style={{ fontSize: 8.5, fill: BRAND.textMut, fontFamily: 'Inter,sans-serif' }}>
         {children}
       </text>
     );
   }
 
-  // ── Layout constants ──────────────────────────────────────────────────────
-  const CX = 230;   // center X
+  function PLabel({ x, y, a = 'middle' as const, children }: {
+    x: number; y: number; a?: 'middle' | 'start'; children: React.ReactNode;
+  }) {
+    return (
+      <text x={x} y={y} textAnchor={a}
+        style={{ fontSize: 13, fontWeight: 800, fill: '#0F172A', fontFamily: 'Inter,sans-serif', letterSpacing: 1.5 }}>
+        {children}
+      </text>
+    );
+  }
 
-  const GY = 30;
-  const VY = 68,  VH = 50,  VW = 120;
-  const HY = 148, HH = 88,  HW = 160;
-  const TY = 268, TH = 110, TW = 210;
-  const AY = 410, AH = 50,  AW = 120;
-  const BY = 495;
-  const FY = 535, FH = 74;
-
-  const nFeeders = outs.length;
-  const FW  = 72;
-  const GAP = nFeeders >= 4 ? 10 : 16;
-  const totalW   = nFeeders * FW + (nFeeders - 1) * GAP;
-  const FX0      = CX - totalW / 2;
-  const feederX  = (i: number) => FX0 + i * (FW + GAP);
-  const feederCX = (i: number) => feederX(i) + FW / 2;
-
-  const busX1 = nFeeders > 0 ? Math.min(feederCX(0), CX) - 30 : CX - 30;
-  const busX2 = nFeeders > 0 ? Math.max(feederCX(nFeeders - 1), CX) + 30 : CX + 30;
+  const vcbClr   = pillColor(vcb, offline);
+  const relayClr = offline ? OF : (vcb?.relay === false ? STATUS.critical.color : G);
+  const acbClr   = pillColor(acb, offline);
+  const trfClr   = offline ? OF : ((trf?.oilT ?? 0) > 85 || trf?.prv ? STATUS.warning.color : G);
 
   return (
     <div style={{ width: '100%', overflowX: 'auto' }}>
-      <svg
-        viewBox="0 0 460 640"
-        style={{ width: '100%', maxWidth: 480, display: 'block', margin: '0 auto' }}
-        xmlns="http://www.w3.org/2000/svg"
-      >
+      <svg viewBox={`0 0 ${W} ${H}`}
+        style={{ width: '100%', maxWidth: W + 30, display: 'block', margin: '0 auto' }}
+        xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="120%">
-            <feDropShadow dx={0} dy={1} stdDeviation={3} floodColor="#0F172A" floodOpacity={0.07} />
-          </filter>
-          <style>{`
-            @keyframes flowDown { from { stroke-dashoffset:20; } to { stroke-dashoffset:0; } }
-            @keyframes pulseDot { 0%,100%{ opacity:1; } 50%{ opacity:0.4; } }
-          `}</style>
+          <style>{`@keyframes sldFlow{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}`}</style>
         </defs>
 
-        {/* ── Grid Input ──────────────────────────────────────────────────── */}
-        <rect x={CX - 60} y={GY - 14} width={120} height={26} rx={6} fill="#F8FAFC" stroke={BRAND.border} strokeWidth={1} />
-        <TX x={CX} y={GY + 4} size={10} weight={600} color={BRAND.textSec}>11kV GRID INPUT</TX>
+        {/* ══ HT PANEL ══ */}
+        <PLabel x={CX} y={HP.y - 7}>HT PANEL</PLabel>
+        <rect x={HP.x} y={HP.y} width={HP.w} height={HP.h} rx={6}
+          fill="none" stroke="#0F172A" strokeWidth={2.5}/>
 
-        <FlowLine x1={CX} y1={GY + 12} x2={CX} y2={VY} status={vcb?.status ?? 'normal'} />
+        <Pill cx={CX} cy={VCB_Y} lbl="VCB + RMU" clr={vcbClr} id={vcb?.id}/>
+        <Sub x={CX} y={VCB_Y + 24}>
+          {vcb ? (vcb.tripped ? '⚡ TRIPPED' : `CLOSED${vcb.spring ? ' · Spring: Ready' : ''}`) : '—'}
+        </Sub>
 
-        {/* ── HT VCB ──────────────────────────────────────────────────────── */}
-        <Box id={vcb?.id} x={CX - VW / 2} y={VY} w={VW} h={VH} status={vcb?.status}>
-          <TX x={CX} y={VY + 14} size={9} weight={600} color={BRAND.textMut}>HT BREAKER (VCB)</TX>
-          <TX x={CX} y={VY + 29} size={11} weight={700} mono
-            color={vcb?.tripped ? STATUS.critical.color : sColor(vcb?.status ?? 'normal')}
-          >
-            {vcb?.tripped ? '⚡ TRIPPED' : 'CLOSED'}
-          </TX>
-          <TX x={CX} y={VY + 43} size={9} color={BRAND.textMut}>
-            Spring: {vcb?.spring ? 'Ready' : 'Not Ready'} · Relay: {vcb?.relay ? 'OK' : 'Fault'}
-          </TX>
-        </Box>
+        <line x1={CX} y1={VCB_Y + 17} x2={CX} y2={RELAY_Y - 17} stroke="#CBD5E1" strokeWidth={2}/>
 
-        <FlowLine x1={CX} y1={VY + VH} x2={CX} y2={HY} status={htf?.status ?? 'normal'} />
+        <Pill cx={CX} cy={RELAY_Y} lbl="PROTECTION RELAY" clr={relayClr}/>
+        <Sub x={CX} y={RELAY_Y + 24}>
+          {vcb?.relay === false ? '⚠ FAULT DETECTED' : 'OK — No fault'}
+        </Sub>
 
-        {/* ── HT Feeder ───────────────────────────────────────────────────── */}
-        <Box id={htf?.id} x={CX - HW / 2} y={HY} w={HW} h={HH} status={htf?.status}>
-          <TX x={CX} y={HY + 13} size={9} weight={600} color={BRAND.textMut}>HT METERING (EN6400)</TX>
+        {/* HP bottom → MFM-1 junction → TRF */}
+        <Line d={`M${CX} ${HP.y + HP.h} L${CX} ${TRF.y}`} live={!vcb?.tripped}/>
+        <Dot x={CX} y={MFM1_Y}/>
 
-          <TX x={CX - HW / 2 + 14} y={HY + 30} size={9} weight={600} color={BRAND.textMut} anchor="start">Voltage</TX>
-          <TX x={CX + HW / 2 - 14} y={HY + 30} size={9} weight={600} color={BRAND.textMut} anchor="end">Current</TX>
-          <TX x={CX - HW / 2 + 14} y={HY + 43} size={12} weight={700} mono color={BRAND.text} anchor="start">
-            {htf ? `${htf.v != null ? (htf.v / 1000).toFixed(1) : '—'} kV` : '—'}
-          </TX>
-          <TX x={CX + HW / 2 - 14} y={HY + 43} size={12} weight={700} mono color={BRAND.text} anchor="end">
-            {htf ? `${htf.a != null ? htf.a.toFixed(1) : '—'} A` : '—'}
-          </TX>
+        {/* MFM-1 branch RIGHT */}
+        <Line d={`M${CX} ${MFM1_Y} L${540} ${MFM1_Y}`} live={!vcb?.tripped}/>
+        <Pill cx={592} cy={MFM1_Y} w={112} h={30} lbl="MFM - 1" clr={offline ? OF : G} id={htf?.id}/>
+        {htf && <>
+          <Sub x={592} y={MFM1_Y + 22}>
+            {htf.v != null ? `${(htf.v / 1000).toFixed(1)} kV` : '—'} · {fmt(htf.a, 1, ' A')}
+          </Sub>
+          <text x={592} y={MFM1_Y + 33} textAnchor="middle"
+            style={{ fontSize: 8, fontWeight: 600, fill: offline ? OF : BRAND.blue, fontFamily: 'Inter,sans-serif' }}>
+            {fmt(htf.kw, 0, ' kW')} · PF {fmt(htf.pf, 2)}
+          </text>
+        </>}
 
-          <line x1={CX - HW / 2 + 10} y1={HY + 51} x2={CX + HW / 2 - 10} y2={HY + 51} stroke={BRAND.border} strokeWidth={1} />
+        {/* ══ TRANSFORMER ══ */}
+        <rect x={TRF.x} y={TRF.y} width={TRF.w} height={TRF.h} rx={8} fill={trfClr}
+          onClick={trf && !offline ? () => onSelectComp(selectedComp === trf.id ? null : trf.id) : undefined}
+          style={{ cursor: trf && !offline ? 'pointer' : 'default' }}/>
+        <text x={CX} y={TRF.y + 28} textAnchor="middle"
+          style={{ fontSize: 28, fontWeight: 900, fill: 'white', fontFamily: 'Inter,sans-serif', letterSpacing: 3 }}>TRF</text>
+        <line x1={TRF.x + 14} y1={TRF.y + 38} x2={TRF.x + TRF.w - 14} y2={TRF.y + 38}
+          stroke="rgba(255,255,255,0.2)" strokeWidth={1}/>
+        <text x={TRF.x + 14} y={TRF.y + 54}
+          style={{ fontSize: 8, fill: 'rgba(255,255,255,.65)', fontFamily: 'Inter', fontWeight: 600 }}>OIL TEMP</text>
+        <text x={TRF.x + TRF.w - 14} y={TRF.y + 54} textAnchor="end"
+          style={{ fontSize: 8, fill: 'rgba(255,255,255,.65)', fontFamily: 'Inter', fontWeight: 600 }}>WINDING TEMP</text>
+        <text x={TRF.x + 14} y={TRF.y + 74}
+          style={{ fontSize: 17, fill: 'white', fontFamily: 'JetBrains Mono,monospace', fontWeight: 700 }}>
+          {fmt(trf?.oilT, 1, '°C')}
+        </text>
+        <text x={TRF.x + TRF.w - 14} y={TRF.y + 74} textAnchor="end"
+          style={{ fontSize: 17, fill: 'white', fontFamily: 'JetBrains Mono,monospace', fontWeight: 700 }}>
+          {fmt(trf?.windT, 1, '°C')}
+        </text>
+        <line x1={TRF.x + 14} y1={TRF.y + 82} x2={TRF.x + TRF.w - 14} y2={TRF.y + 82}
+          stroke="rgba(255,255,255,0.2)" strokeWidth={1}/>
+        {cfg.has_oltc ? <>
+          <text x={TRF.x + 14} y={TRF.y + 98}
+            style={{ fontSize: 8, fill: 'rgba(255,255,255,.65)', fontFamily: 'Inter', fontWeight: 600 }}>OLTC TAP</text>
+          <text x={TRF.x + 14} y={TRF.y + 116}
+            style={{ fontSize: 16, fill: 'white', fontFamily: 'JetBrains Mono,monospace', fontWeight: 700 }}>
+            {trf?.oltc != null ? (trf.oltc >= 0 ? `+${trf.oltc}` : String(trf.oltc)) : '—'}
+          </text>
+        </> : null}
+        <text x={CX} y={TRF.y + 98} textAnchor="middle"
+          style={{ fontSize: 8, fill: 'rgba(255,255,255,.65)', fontFamily: 'Inter', fontWeight: 600 }}>
+          {(detail.pss?.kva ?? detail.kva ?? 2500).toLocaleString()} kVA
+        </text>
+        <text x={TRF.x + TRF.w - 14} y={TRF.y + 98} textAnchor="end"
+          style={{ fontSize: 8, fill: 'rgba(255,255,255,.65)', fontFamily: 'Inter', fontWeight: 600 }}>MOG , PRV</text>
+        <text x={TRF.x + TRF.w - 14} y={TRF.y + 116} textAnchor="end"
+          style={{ fontSize: 9, fill: trf?.prv ? '#FCD34D' : 'rgba(255,255,255,.88)', fontFamily: 'Inter', fontWeight: 600 }}>
+          {trf?.mog === false ? '⚠ MOG FAULT' : 'MOG OK'} · {trf?.prv ? '⚡ PRV' : 'PRV OK'}
+        </text>
+        {cfg.has_buchholz && (
+          <text x={CX} y={TRF.y + TRF.h - 18} textAnchor="middle"
+            style={{ fontSize: 8, fill: 'rgba(255,255,255,.65)', fontFamily: 'Inter', fontWeight: 600 }}>Buchholz</text>
+        )}
+        {cfg.has_buchholz && (
+          <text x={CX} y={TRF.y + TRF.h - 6} textAnchor="middle"
+            style={{ fontSize: 9, fill: trf?.buch ? '#FCD34D' : 'rgba(255,255,255,.88)', fontFamily: 'Inter', fontWeight: 600 }}>
+            {trf?.buch ? '⚠ ALARM' : 'OK'}
+          </text>
+        )}
 
-          <TX x={CX} y={HY + 64} size={13} weight={700} mono color={BRAND.blue}>
-            {htf ? `${(htf.kw ?? 0).toLocaleString('en-IN')} kW` : '—'}
-          </TX>
-          <TX x={CX} y={HY + 79} size={9} mono color={BRAND.textSec}>
-            {htf ? `PF ${htf.pf != null ? htf.pf.toFixed(2) : '—'}  ·  ${htf.hz ?? '—'} Hz` : ''}
-          </TX>
-        </Box>
+        {/* TRF bottom → ACB-1 */}
+        <Line d={`M${CX} ${TRF.y + TRF.h} L${CX} ${ACB_Y - 17}`} live={!acb?.tripped}/>
 
-        <FlowLine x1={CX} y1={HY + HH} x2={CX} y2={TY} status={trf?.status ?? 'normal'} />
+        {/* ══ LT PANEL ══ */}
+        <rect x={LT.x} y={LT.y} width={LT.w} height={LT.h} rx={6}
+          fill="none" stroke="#0F172A" strokeWidth={2.5}/>
+        <PLabel x={LT.x + LT.w + 12} y={LT.y + LT.h / 2 + 5} a="start">LT PANEL</PLabel>
 
-        {/* ── Transformer ─────────────────────────────────────────────────── */}
-        <Box id={trf?.id} x={CX - TW / 2} y={TY} w={TW} h={TH} status={trf?.status}>
-          <TX x={CX} y={TY + 15} size={9} weight={600} color={BRAND.textMut}>MAIN TRANSFORMER</TX>
-          <TX x={CX} y={TY + 28} size={10} weight={500} color={BRAND.textSec}>
-            {trf ? `${(detail.pss?.kva ?? detail.kva ?? 2500).toLocaleString()} kVA  ·  11 / 0.415 kV` : ''}
-          </TX>
+        {/* ACB-2 — only if has_acb2; has its OWN power source arrow above, independent of ACB-1 */}
+        {cfg.has_acb2 && <>
+          {/* Alternate source indicator (arrow from above into ACB-2) */}
+          <text x={ACB2X} y={LT.y + 14} textAnchor="middle"
+            style={{ fontSize: 7.5, fontWeight: 700, fill: GR, fontFamily: 'Inter,sans-serif', letterSpacing: .5 }}>
+            DG / ALT SOURCE
+          </text>
+          {/* dashed line from label down to ACB-2 top */}
+          <line x1={ACB2X} y1={LT.y + 18} x2={ACB2X} y2={ACB_Y - 17}
+            stroke="#CBD5E1" strokeWidth={2} strokeDasharray="4 3"/>
+          {/* arrowhead pointing down into ACB-2 */}
+          <path d={`M${ACB2X - 5} ${ACB_Y - 24} L${ACB2X} ${ACB_Y - 17} L${ACB2X + 5} ${ACB_Y - 24}`}
+            stroke="#CBD5E1" strokeWidth={2} fill="none"/>
 
-          <line x1={CX - TW / 2 + 12} y1={TY + 36} x2={CX + TW / 2 - 12} y2={TY + 36} stroke={BRAND.border} strokeWidth={1} />
+          <Pill cx={ACB2X} cy={ACB_Y} w={120} h={34} lbl="ACB - 2" clr={offline ? OF : GR}/>
+          <Sub x={ACB2X} y={ACB_Y + 24}>OPEN · Alternate</Sub>
 
-          <TX x={CX - TW / 2 + 16} y={TY + 52} size={9} weight={600} color={BRAND.textMut} anchor="start">Oil Temp</TX>
-          <TX x={CX + TW / 2 - 16} y={TY + 52} size={9} weight={600} color={BRAND.textMut} anchor="end">Winding</TX>
-          <TX
-            x={CX - TW / 2 + 16} y={TY + 65} size={13} weight={700} mono anchor="start"
-            color={
-              trf?.oilT != null
-                ? trf.oilT >= 85 ? STATUS.critical.color : trf.oilT >= 70 ? STATUS.warning.color : BRAND.text
-                : BRAND.text
-            }
-          >
-            {trf?.oilT != null ? `${trf.oilT.toFixed(1)}°C` : '—'}
-          </TX>
-          <TX
-            x={CX + TW / 2 - 16} y={TY + 65} size={13} weight={700} mono anchor="end"
-            color={
-              trf?.windT != null
-                ? trf.windT >= 120 ? STATUS.critical.color : trf.windT >= 100 ? STATUS.warning.color : BRAND.text
-                : BRAND.text
-            }
-          >
-            {trf?.windT != null ? `${trf.windT.toFixed(1)}°C` : '—'}
-          </TX>
+          {/* MFM-2B branch LEFT (if enabled) */}
+          {cfg.has_mfm2b && <>
+            <Dot x={ACB2X} y={MFM2_Y} c={GR}/>
+            <Line d={`M${ACB2X} ${MFM2_Y} L${172} ${MFM2_Y}`} live={false}/>
+            <Pill cx={138} cy={MFM2_Y} w={112} h={30} lbl="MFM - 2B" clr={offline ? OF : GR}/>
+            <Sub x={138} y={MFM2_Y + 22}>— Secondary bus</Sub>
+          </>}
 
-          <line x1={CX - TW / 2 + 12} y1={TY + 73} x2={CX + TW / 2 - 12} y2={TY + 73} stroke={BRAND.border} strokeWidth={1} />
+          {/* ACB-2 path: down → across into CHARGE OVER left */}
+          <Line d={`M${ACB2X} ${ACB_Y + 17} L${ACB2X} ${CO_Y} L${CX - 80} ${CO_Y}`} live={false}/>
+        </>}
 
-          <TX
-            x={CX - TW / 2 + 16} y={TY + 88} size={9} weight={600}
-            color={trf?.buch ? STATUS.warning.color : BRAND.textMut} anchor="start"
-          >
-            {trf?.buch ? '⚠ Buchholz ALARM' : 'Buchholz: OK'}
-          </TX>
-          <TX x={CX + TW / 2 - 16} y={TY + 88} size={9} weight={600} color={trf?.buch ? STATUS.warning.color : BRAND.textMut} anchor="end">
-            OLTC Tap: {trf ? (trf.oltc != null ? (trf.oltc >= 0 ? `+${trf.oltc}` : `${trf.oltc}`) : '—') : '—'}
-          </TX>
+        {/* ACB-1 (main, always present) */}
+        <Pill cx={CX} cy={ACB_Y} lbl="ACB - 1" clr={acbClr} id={acb?.id}/>
+        <Sub x={CX} y={ACB_Y + 24}>
+          {acb ? (acb.tripped ? '⚡ TRIPPED' : `CLOSED · ${fmt(ltf?.v, 0, ' V')}`) : '—'}
+        </Sub>
 
-          <TX x={CX} y={TY + 104} size={8} color={BRAND.textMut}>
-            {trf ? `MOG: ${trf.mog ? 'OK' : 'Fault'}  ·  PRV: ${trf.prv ? 'TRIPPED' : 'OK'}` : ''}
-          </TX>
-        </Box>
+        {/* ACB-1 → CO vertical spine */}
+        <Line d={`M${CX} ${ACB_Y + 17} L${CX} ${CO_Y - 17}`} live={!acb?.tripped}/>
 
-        <FlowLine x1={CX} y1={TY + TH} x2={CX} y2={AY} status={acb?.status ?? 'normal'} />
+        {/* MFM-2A junction + branch RIGHT (always present with ACB-1) */}
+        <Dot x={CX} y={MFM2_Y}/>
+        <Line d={`M${CX} ${MFM2_Y} L${540} ${MFM2_Y}`} live={!acb?.tripped}/>
+        <Pill cx={592} cy={MFM2_Y} w={112} h={30} lbl="MFM - 2A" clr={offline ? OF : G} id={ltf?.id}/>
+        {ltf && (
+          <Sub x={592} y={MFM2_Y + 22}>
+            {fmt(ltf.kw, 0, ' kW')} · PF {fmt(ltf.pf, 2)} · {fmt(ltf.a, 1, ' A')}
+          </Sub>
+        )}
 
-        {/* ── LT ACB ──────────────────────────────────────────────────────── */}
-        <Box id={acb?.id} x={CX - AW / 2} y={AY} w={AW} h={AH} status={acb?.status}>
-          <TX x={CX} y={AY + 14} size={9} weight={600} color={BRAND.textMut}>LT MAIN BREAKER (ACB)</TX>
-          <TX x={CX} y={AY + 29} size={11} weight={700} mono
-            color={acb?.tripped ? STATUS.critical.color : sColor(acb?.status ?? 'normal')}
-          >
-            {acb?.tripped ? '⚡ TRIPPED' : 'CLOSED'}
-          </TX>
-          <TX x={CX} y={AY + 43} size={9} color={BRAND.textMut}>
-            {ltf ? `${ltf.v ?? 415} V  ·  ${(ltf.a ?? 0).toLocaleString('en-IN')} A` : '415 V  ·  —'}
-          </TX>
-        </Box>
+        {/* CHARGE OVER */}
+        <Pill cx={CX} cy={CO_Y} lbl="CHARGE OVER" clr={offline ? OF : G}/>
+        <Sub x={CX} y={CO_Y + 24}>
+          {cfg.has_acb2 ? 'AUTO — MAINS / DG' : 'MAINS'}
+        </Sub>
 
-        <FlowLine x1={CX} y1={AY + AH} x2={CX} y2={BY} status={ltf?.status ?? 'normal'} />
+        {/* CO → APFC junction → BUS */}
+        <Line d={`M${CX} ${CO_Y + 17} L${CX} ${BUS_Y}`} live={true}/>
 
-        {/* ── LT Bus label ────────────────────────────────────────────────── */}
-        <TX x={busX1} y={BY - 6} size={8} weight={600} color={BRAND.textMut} anchor="start">415V LT BUS</TX>
-        <TX
-          x={busX2} y={BY - 6} size={8} weight={500} mono anchor="end"
-          color={
-            ltf
-              ? ltf.pf != null
-                ? ltf.pf >= 0.95 ? '#16A34A' : ltf.pf >= 0.9 ? '#D97706' : '#DC2626'
-                : BRAND.textMut
-              : BRAND.textMut
-          }
-        >
-          {ltf ? `PF ${(ltf.pf ?? 0).toFixed(2)}  ·  ${(ltf.kw ?? 0).toLocaleString('en-IN')} kW` : ''}
-        </TX>
-        <HBusLine x1={busX1} x2={busX2} y={BY} status={ltf?.status ?? 'normal'} />
+        {/* APFC branch RIGHT (only if has_apfc) */}
+        {cfg.has_apfc && apfc && <>
+          <Dot x={CX} y={APFC_Y}/>
+          <Line d={`M${CX} ${APFC_Y} L${540} ${APFC_Y}`} live={true}/>
+          <Pill cx={592} cy={APFC_Y} w={112} h={30} lbl="APFC"
+            clr={pillColor(apfc, offline)} id={apfc.id}/>
+          <Sub x={592} y={APFC_Y + 22}>
+            PF {fmt(apfc.corrPf, 2)} · {apfc.connKvar ?? '—'} kVAR
+          </Sub>
+        </>}
 
-        {/* ── LT Outgoing Feeders ─────────────────────────────────────────── */}
-        {outs.map((f, i) => {
-          const cx   = feederCX(i);
-          const fx   = feederX(i);
-          const fSel = selectedComp === f.id;
+        {/* 415V LT BUS */}
+        <line x1={busX1} y1={BUS_Y} x2={busX2} y2={BUS_Y}
+          stroke="#E2E8F0" strokeWidth={14} strokeLinecap="round"/>
+        <line x1={busX1} y1={BUS_Y} x2={busX2} y2={BUS_Y}
+          stroke={offline ? OF : G} strokeWidth={8} strokeLinecap="round" opacity={0.88}/>
+        <text x={busX1 + 4} y={BUS_Y - 10}
+          style={{ fontSize: 8, fontWeight: 700, fill: BRAND.textMut, fontFamily: 'Inter,sans-serif' }}>415V LT BUS</text>
+        {ltf && (
+          <text x={busX2 - 4} y={BUS_Y - 10} textAnchor="end"
+            style={{ fontSize: 8, fontWeight: 600, fill: offline ? OF : BRAND.blue, fontFamily: 'Inter,sans-serif' }}>
+            {fmt(ltf.kw, 0, ' kW')} · PF {fmt(ltf.pf, 2)}
+          </text>
+        )}
+
+        {/* ══ N Feeder columns ══ */}
+        {Array.from({ length: nF }, (_, i) => {
+          const f   = outs[i];
+          const cx  = fcx(i), fx = ffx(i);
+          const fC  = f ? pillColor(f, offline) : (offline ? OF : GR);
+          const mC  = f && !offline ? G : (offline ? OF : GR);
+          const sel = !!f && selectedComp === f.id;
           return (
-            <g key={f.id}>
-              <FlowLine x1={cx} y1={BY + 5} x2={cx} y2={FY} status={f.status} />
-              <g
-                onClick={() => !isOffline && onSelectComp(fSel ? null : f.id)}
-                style={{ cursor: isOffline ? 'default' : 'pointer' }}
-              >
-                <rect
-                  x={fx} y={FY} width={FW} height={FH} rx={8}
-                  fill={fSel ? '#EFF6FF' : '#FFFFFF'}
-                  stroke={fSel ? BRAND.blue : (isOffline ? STATUS.offline.color : sColor(f.status))}
-                  strokeWidth={fSel ? 2.5 : 1.5}
-                  filter="url(#cardShadow)"
-                />
-                <TX x={cx} y={FY + 14} size={10} weight={700} color={fSel ? BRAND.blue : BRAND.text}>F{i + 1}</TX>
-                <TX x={cx} y={FY + 28} size={9} weight={500} color={BRAND.textMut}>
-                  {f.label.split('—')[1]?.trim().substring(0, 10) || f.id}
-                </TX>
-                <line x1={fx + 8} y1={FY + 35} x2={fx + FW - 8} y2={FY + 35} stroke={BRAND.border} strokeWidth={1} />
-                <TX x={cx} y={FY + 49} size={12} weight={700} mono color={isOffline ? BRAND.textMut : BRAND.text}>
-                  {isOffline ? '—' : `${f.kw} kW`}
-                </TX>
-                <TX x={cx} y={FY + 63} size={9} mono color={BRAND.textMut}>
-                  {isOffline ? '' : `${f.a} A`}
-                </TX>
+            <g key={i}>
+              <Line d={`M${cx} ${BUS_Y + 7} L${cx} ${FMFM_Y - 16}`} live={!!f && !f.tripped}/>
+              <rect x={fx} y={FMFM_Y - 16} width={FW} height={32} rx={6} fill={mC}
+                stroke="rgba(0,0,0,0.1)" strokeWidth={1}/>
+              <text x={cx} y={FMFM_Y} textAnchor="middle" dominantBaseline="middle"
+                style={{ fontSize: 11, fontWeight: 700, fill: 'white', fontFamily: 'Inter,sans-serif' }}>
+                {`MFM - ${i + 3}`}
+              </text>
+              <Sub x={cx} y={FMFM_Y + 22}>
+                {f && !offline ? `${f.kw ?? '—'} kW` : '—'}
+              </Sub>
+              <Line d={`M${cx} ${FMFM_Y + 16} L${cx} ${FMCCB_Y - 17}`} live={!!f && !f.tripped}/>
+              <g onClick={f && !offline ? () => onSelectComp(sel ? null : f.id) : undefined}
+                style={{ cursor: f && !offline ? 'pointer' : 'default' }}>
+                <rect x={fx} y={FMCCB_Y - 17} width={FW} height={34} rx={6} fill={fC}
+                  stroke={sel ? '#1D4ED8' : 'rgba(0,0,0,0.1)'} strokeWidth={sel ? 2.5 : 1}/>
+                <text x={cx} y={FMCCB_Y} textAnchor="middle" dominantBaseline="middle"
+                  style={{ fontSize: 12, fontWeight: 700, fill: 'white', fontFamily: 'Inter,sans-serif' }}>
+                  {`MCCB - ${i + 1}`}
+                </text>
+                <text x={cx} y={FMCCB_Y + 13} textAnchor="middle"
+                  style={{ fontSize: 8.5, fill: 'rgba(255,255,255,0.85)', fontFamily: 'Inter,sans-serif' }}>
+                  {f ? (f.tripped ? '⚡ TRIPPED' : 'CLOSED') : 'N/A'}
+                </text>
               </g>
             </g>
           );
         })}
 
-        {/* ── APFC indicator ──────────────────────────────────────────────── */}
-        {apfc && (
+        {/* Offline overlay */}
+        {offline && (
           <g>
-            <line
-              x1={busX2} y1={BY} x2={busX2 + 16} y2={BY}
-              stroke={isOffline ? STATUS.offline.color : sColor(apfc.status)}
-              strokeWidth={2}
-            />
-            <g
-              onClick={() => !isOffline && onSelectComp(selectedComp === apfc.id ? null : apfc.id)}
-              style={{ cursor: isOffline ? 'default' : 'pointer' }}
-            >
-              <rect
-                x={busX2 + 16} y={BY - 30} width={72} height={60} rx={8}
-                fill={selectedComp === apfc.id ? '#EFF6FF' : '#FFFFFF'}
-                stroke={selectedComp === apfc.id ? BRAND.blue : (isOffline ? STATUS.offline.color : sColor(apfc.status))}
-                strokeWidth={selectedComp === apfc.id ? 2.5 : 1.5}
-                filter="url(#cardShadow)"
-              />
-              <TX x={busX2 + 52} y={BY - 16} size={8} weight={600} color={BRAND.textMut}>APFC</TX>
-              <TX
-                x={busX2 + 52} y={BY} size={10} weight={700} mono
-                color={
-                  isOffline
-                    ? BRAND.textMut
-                    : apfc.corrPf != null
-                      ? apfc.corrPf >= 0.95 ? '#16A34A' : apfc.corrPf >= 0.9 ? '#D97706' : '#DC2626'
-                      : BRAND.textMut
-                }
-              >
-                {isOffline ? '—' : `PF ${apfc.corrPf?.toFixed(2)}`}
-              </TX>
-              <TX x={busX2 + 52} y={BY + 16} size={8} mono color={BRAND.textMut}>
-                {isOffline ? '' : `${apfc.connKvar} kVAR`}
-              </TX>
-            </g>
-          </g>
-        )}
-
-        {/* ── Offline overlay ──────────────────────────────────────────────── */}
-        {isOffline && (
-          <g>
-            <rect x={0} y={0} width={460} height={640} fill="rgba(241,245,249,0.82)" rx={0} />
-            <rect
-              x={130} y={280} width={200} height={80} rx={12}
-              fill="#FFFFFF" stroke={BRAND.border} strokeWidth={1}
-              filter="url(#cardShadow)"
-            />
-            <TX x={230} y={311} size={13} weight={700} color={BRAND.textSec}>PSS Offline</TX>
-            <TX x={230} y={332} size={11} color={BRAND.textMut}>
-              {`Last seen ${timeAgo(detail.seen ?? undefined)}`}
-            </TX>
-            <TX x={230} y={350} size={10} color={STATUS.offline.color}>No live data available</TX>
+            <rect x={0} y={0} width={W} height={H} fill="rgba(248,250,252,0.86)"/>
+            <rect x={CX - 115} y={H / 2 - 48} width={230} height={96} rx={12}
+              fill="white" stroke="#E2E8F0" strokeWidth={1.5}/>
+            <text x={CX} y={H / 2 - 16} textAnchor="middle"
+              style={{ fontSize: 15, fontWeight: 700, fill: '#475569', fontFamily: 'Inter,sans-serif' }}>
+              PSS Offline
+            </text>
+            <text x={CX} y={H / 2 + 8} textAnchor="middle"
+              style={{ fontSize: 11, fill: '#94A3B8', fontFamily: 'Inter,sans-serif' }}>
+              {`Last seen ${detail.seen ? new Date(detail.seen).toLocaleTimeString() : '—'}`}
+            </text>
           </g>
         )}
       </svg>

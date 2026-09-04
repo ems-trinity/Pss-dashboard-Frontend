@@ -17,7 +17,7 @@ test.describe('Tickets', () => {
   test('creates a ticket', async ({ page }) => {
     const title = `E2E Ticket ${Date.now()}`;
     await page.getByRole('button', { name: /new ticket/i }).click();
-    await page.getByLabel(/title/i).fill(title);
+    await page.locator('[role="dialog"] input').first().fill(title);
     await page.getByRole('button', { name: /create ticket/i }).click();
     await expect(page.getByText(title)).toBeVisible({ timeout: 5_000 });
   });

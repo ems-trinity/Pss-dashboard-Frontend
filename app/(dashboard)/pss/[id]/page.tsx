@@ -23,11 +23,21 @@ export default function PssDetailPage() {
     if (!id) return;
     getEvents(id, 50).then(setEvents).catch(console.error);
     getPssDetail(id).then(setDetail).catch(console.error);
-    const interval = setInterval(
+
+    // Poll detail every 5 s so SLD colors and readings update live
+    const detailInterval = setInterval(
+      () => getPssDetail(id).then(setDetail).catch(console.error),
+      5_000,
+    );
+    // Poll events every 15 s (fault log)
+    const eventsInterval = setInterval(
       () => getEvents(id, 50).then(setEvents).catch(console.error),
       15_000,
     );
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(detailInterval);
+      clearInterval(eventsInterval);
+    };
   }, [id]);
 
   return (

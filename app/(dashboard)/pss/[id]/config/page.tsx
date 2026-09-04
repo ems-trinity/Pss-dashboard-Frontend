@@ -22,10 +22,10 @@ export default function ConfigPage() {
     }
   }, [id]);
 
-  if (user?.role !== 'super_admin') {
+  if (!user || (user.role !== 'super_admin' && user.role !== 'admin')) {
     return (
       <div className="p-6 text-sm text-[#6B7280]">
-        Threshold configuration requires Super Admin role.
+        Config access requires Admin role or above.
       </div>
     );
   }
@@ -34,5 +34,7 @@ export default function ConfigPage() {
     setThresholds(t);
   }
 
-  return <ThresholdConfig pss={pss} thresholds={thresholds} onSave={handleSave} />;
+  const canEdit = user.role === 'super_admin';
+
+  return <ThresholdConfig pss={pss} thresholds={thresholds} onSave={handleSave} readOnly={!canEdit} />;
 }

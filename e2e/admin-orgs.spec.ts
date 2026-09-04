@@ -17,7 +17,7 @@ test.describe('Organisations CRUD', () => {
   test('creates a new organisation', async ({ page }) => {
     const orgName = `E2E Org ${Date.now()}`;
     await page.getByRole('button', { name: /add/i }).click();
-    await page.getByLabel(/name/i).fill(orgName);
+    await page.getByPlaceholder('Trinity Cleantech').fill(orgName);
     await page.getByRole('button', { name: /^save$/i }).click();
     await expect(page.getByText(orgName)).toBeVisible({ timeout: 5_000 });
   });

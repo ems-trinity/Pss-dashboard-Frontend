@@ -175,6 +175,15 @@ function transformComponent(c: Record<string, unknown>) {
   return { type: t, id: c.component_identifier as string, label: t, status: 'normal' };
 }
 
+export interface SldConfig {
+  has_acb2?:     boolean;
+  has_apfc?:     boolean;
+  has_oltc?:     boolean;
+  has_buchholz?: boolean;
+  has_mfm2b?:    boolean;
+  feeder_count?: number;
+}
+
 export interface PssDetail {
   id:         string;
   code:       string;
@@ -184,12 +193,31 @@ export interface PssDetail {
   locCode:    string;
   status:     string;
   seen:       string | null;
+  sld_config: SldConfig;
   components: ReturnType<typeof transformComponent>[];
   faults:     {
     id: string; ts: string; at: string; sev: string;
     comp: string; type: string; msg: string; fStatus: string;
   }[];
 }
+
+// PSS Presets
+export interface PssPreset {
+  id:              string;
+  name:            string;
+  description:     string | null;
+  config:          SldConfig;
+  created_by_name: string | null;
+  created_at:      string;
+  updated_at:      string;
+}
+export const getPresets   = ()                                     => apiFetch<PssPreset[]>('/admin/pss-presets');
+export const createPreset = (b: Omit<PssPreset,'id'|'created_by_name'|'created_at'|'updated_at'>) =>
+  apiFetch<PssPreset>('/admin/pss-presets', { method: 'POST', body: JSON.stringify(b) });
+export const updatePreset = (id: string, b: Partial<PssPreset>)   =>
+  apiFetch<PssPreset>(`/admin/pss-presets/${id}`, { method: 'PUT', body: JSON.stringify(b) });
+export const deletePreset = (id: string)                           =>
+  apiFetch<void>(`/admin/pss-presets/${id}`, { method: 'DELETE' });
 
 export async function getPssDetail(id: string): Promise<PssDetail> {
   const data = await apiFetch<Record<string, unknown>>(`/pss/${id}`);
@@ -201,8 +229,9 @@ export async function getPssDetail(id: string): Promise<PssDetail> {
     ht:      pss.ht_voltage_class as string,
     loc:     pss.location_name as string,
     locCode: pss.location_code as string,
-    status:  (data.status ?? pss.status) as string,
-    seen:    (data.last_seen_at ?? null) as string | null,
+    status:     (data.status ?? pss.status) as string,
+    seen:       (data.last_seen_at ?? null) as string | null,
+    sld_config: ((pss.effective_config ?? pss.sld_config ?? {}) as SldConfig),
     components: ((data.components ?? []) as Record<string, unknown>[]).map(transformComponent),
     faults:  ((data.active_faults ?? []) as Record<string, unknown>[]).map(f => ({
       id:      f.id as string,
@@ -263,9 +292,26 @@ export async function getPss(): Promise<Pss[]> {
   return transformPssList(rows);
 }
 
-export async function getEvents(pssId: string | null = null, limit = 100): Promise<PssEvent[]> {
+export async function getEvents(
+  pssId: string | null = null,
+  limit = 100,
+): Promise<PssEvent[]> {
   const path = pssId ? `/pss/${pssId}/events?limit=${limit}` : `/events?limit=${limit}`;
   const rows = await apiFetch<Record<string, unknown>[]>(path);
+  return transformEvents(rows);
+}
+
+export async function getGlobalEvents(filters: {
+  limit?: number;
+  severity?: string;
+  event_type?: string;
+  pss_id?: string;
+} = {}): Promise<PssEvent[]> {
+  const qs = new URLSearchParams({ limit: String(filters.limit ?? 200) });
+  if (filters.severity)   qs.set('severity',   filters.severity);
+  if (filters.event_type) qs.set('event_type', filters.event_type);
+  if (filters.pss_id)     qs.set('pss_id',     filters.pss_id);
+  const rows = await apiFetch<Record<string, unknown>[]>(`/events?${qs}`);
   return transformEvents(rows);
 }
 
